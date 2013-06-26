@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <title>HoneyDo</title>
+  <link rel="stylesheet" href="http://code.jquery.com/mobile/1.1.1/jquery.mobile-1.1.1.min.css" />
+  
+  <!-- Extra Codiqa features -->
+  <link rel="stylesheet" href="codiqa.ext.css">
+  
+  <link rel="stylesheet" href="https://codiqa.com/view/7cff7ed5/css">
+  
+  <!-- jQuery and jQuery Mobile -->
+  <script src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
+  <script src="http://code.jquery.com/mobile/1.1.1/jquery.mobile-1.1.1.min.js"></script>
+
+  <!-- Extra Codiqa features -->
+  <script src="https://d10ajoocuyu32n.cloudfront.net/codiqa.ext.js"></script>
+   
+  <script src="https://codiqa.com/view/7cff7ed5/js"></script>
+  
+  <!---- Backbone includes  -->
+  <script type="text/javascript" src="http://static.stackmob.com/js/json2-min.js"></script>
+  <script type="text/javascript" src="http://static.stackmob.com/js/underscore-1.3.3-min.js"></script>
+  <script type="text/javascript" src="http://static.stackmob.com/js/backbone-0.9.2-min.js"></script>
+  
+  
+  <script src="https://apigee.com/usergrid/sdk/usergrid.0.10.5.js"></script>
+  
+  <script type="text/javascript">
+        
+		
+            var apigee = new Usergrid.Client({
+                orgName:'svargas',
+                appName:'sandbox'
+            });
+			
+			var GROUP_ID_UNDEFINED = 0;
+			var currentGroup = GROUP_ID_UNDEFINED;
+			var me="CurrentUser"
+
+            // A Collection object that will be used to hold the list of groups locally
+            var my_groups = new Usergrid.Collection( { "client":apigee,"type":"honeydo",
+													"qs": {
+														"ql":"order by created desc"
+														}
+													} );
+
+								
+			
+            $(document).ready( function () {
+              
+				refreshHome();
+				
+				/* When the add group button is pressed, regfresh member list and get default id */
+				$('#buttonAddGroup').bind('click',refreshBlankGroup);
+				
+				/* When the leave group button is pressed, go back to home page and refresh group list */
+				$('#buttonLeaveGroup').bind('click',leaveCurrentGroup);
+				
+				/* When the user selects to create a group, update the database */
+				$('#create-button').bind('click',createGroup);
+				
+				/* Fill in the default settings when the settings is selected */
+				$('#buttonSettings').bind('click',refreshSettings);
+				
+				
+				
+				/* In the group info page, display/hid requested view */
+				$('#showingCalendar').bind('click', function() {
+				
+					alert('Sorry, calendar view is not currently supported');
+					});
+				$('#showingList').bind('click', function() {
+				
+					alert('Showing list view now');
+					$('#showListView').hide();
+					});
+				
+			});
+			function createGroup () {
+				alert('creating group');
+			
+				var groupName = $('#groupname-field').val();
+				var member = $('#invite_list').val();
+				me = $('#username').val();
+				
+				group = { "GroupName": groupName,
+						  "NumMembers": 2,
+						  "Members":[
+							{"name":"Me", "email":"me@me.com","userid":"ABCDEF"},
+							{"name":"them", "email":"them@them.com","userid":"GHIJKL"}
+						  ],
+						  "Member1": {"name":"Me", "email":"me@me.com","userid":"ABCDEF"},
+						  "Member2": {"name":"them", "email":"them@them.com","userid":"GHIJKL"}
+						};
+				
+				
+				my_groups.addEntity(group, function (error, response) {
+					if (error) {
+						alert("write failed");
+					} else { 
+						alert("group created"); 
+						$('#page_addgroup').dialog('close');
+						groupsLoad();
+					}
+				});
+				
+			}
+			
+			// Group info page display
+			function showGroupInfo(groupId) {
+				//currentGroup = my_groups.getEntityByUUID(groupId);
+				my_groups.resetEntityPointer();
+				currentGroup = GROUP_ID_UNDEFINED;
+				while ( my_groups.hasNextEntity() ) {
+					var next_available_group = my_groups.getNextEntity();
+					if (next_available_group.get('uuid') == groupId){ 
+					  currentGroup = next_available_group;
+					}
+				}			
+				// Display info for this found group
+				if (currentGroup != GROUP_ID_UNDEFINED) {
+					var members = currentGroup.get('Members');
+					
+					// Display members
+					{
+						$("#groupInfoMemberList").empty(); // remove old options
+						$("#groupInfoMemberList").append('<option value="All">All Members</option>');
+						
+						for (var index=0; index<members.length; index++) {
+							var displayName = members[index].name;
+							$("#groupInfoMemberList").append('<option value="'+displayName+'">'+displayName+'</option>');						
+						}
+					}
+					
+					// Display tasks
+					{
+						$("#groupInfoAllTasksList").empty(); // remove old options
+						$("#groupInfoAllTasksList").append('<h3> All Tasks Appended</h3>');
+						$("#groupInfoAllTasksList").append('<ol>');
+						$("#groupInfoAllTasksList").append('<li> Task 1</li>');
+						$("#groupInfoAllTasksList").append('<li> Task 2</li>');
+						$("#groupInfoAllTasksList").append('</ol>');
+						/*for (var index=0; index<members.length; index++) {
+							var displayName = members[index].name;
+							$("#groupInfoMemberList").append('<option value="'+displayName+'">'+displayName+'</option>');						
+						}*/
+						
+					}
+				}
+				else {
+					alert('Group not found');
+				}
+			}
+			
+			
+			// Home page group loading
+            function groupsLoad() {
+				
+				
+				// Get group from Apigee
+				my_groups.fetch(
+
+					// Success Callback
+					function () {
+						$('#groups-list').empty();
+						
+							
+						while ( my_groups.hasNextEntity() ) {
+							var current_group = my_groups.getNextEntity();
+							var numMems = current_group.get('NumMembers');
+							var uuid = current_group.get('uuid');
+							var gName = current_group.get('GroupName');
+							var html = '<li data-theme="c">';
+							html += '<a href="#page_groupinfo" data-transition="slide" onclick="showGroupInfo(\''+uuid+'\')">';
+							html += '  <h3>'+ gName +'</h3>('+ numMems +')</a></li>';
+
+							// Output the book on the page
+							$('#groups-list').append(html);
+						}
+							
+						// Re-apply jQuery Mobile styles
+						$('#groups-list').listview('refresh');
+					},
+
+					// Failure Callback
+					function () { alert("read failed"); }
+				);
+			  
+				// Re-apply jQuery Mobile styles
+				$('#groups-list').listview('refresh');
+            }
+			
+			// Add group dialog page
+			function refreshBlankGroup() {
+				// Refresh member list
+				// Add placeholder text for groupname
+			}
+			
+			function leaveCurrentGroup() {
+				//currentGroup
+			}
+			
+			function refreshHome() {
+			
+				// Get the current user
+				me = $('#username').val();
+				$('#home_show_user').html('<b>'+me+'</b>');
+				
+				// Reload the group info
+				groupsLoad();
+			}
+			
+			function refreshSettings() {
+				// default settings
+				$('#username').empty();
+				$('#username').append(me);
+			}
+
+        </script>
+  
+</head>
+<body>
+  <!-- Home -->
+  <div data-role="page" id="page_home">
+      <div id="home_header" data-theme="b" data-role="header" data-position="fixed"
+      class="do_header">
+          <a data-role="button" href="#page_settings" data-icon="gear" data-iconpos="notext"
+          class="ui-btn-right" id="buttonSettings">
+          </a>
+          <a data-role="button" href="#page_notifications" data-icon="alert" data-iconpos="left"
+          class="ui-btn-right" data-rel="dialog" id="buttonShowNotifications">
+          </a>
+          <a data-role="button" href="#page_addgroup" data-icon="plus" data-iconpos="left"
+          class="ui-btn-left" data-rel="dialog" id="buttonAddGroup">
+              New
+          </a>
+          <h5>
+              Honey Do!
+          </h5>
+      </div>
+      <div data-role="content">
+          <div>
+              <p>
+                  <span style="color: rgb(51, 102, 255);" id="home_show_user">
+                      <b>
+                          CurrentUser
+                      </b>
+                  </span>
+              </p>
+          </div>
+          <a id="sign_in_button" data-role="button" data-inline="true" href="#page_home"
+          class="account_button">
+              Sign in
+          </a>
+          <a id="log_out_button" data-role="button" data-inline="true" href="#page_home"
+          class="account_button">
+              Log out
+          </a>
+          <ul id="groups-list" data-role="listview" data-divider-theme="b" data-inset="false">
+          </ul>
+      </div>
+  </div>
+  
+  
+  <!-- Settings -->
+  <div data-role="page" id="page_settings">
+      <div id="settings_header" data-theme="b" data-role="header" data-position="fixed"
+      class="do_header">
+          <a data-role="button" href="#page_home" data-icon="refresh" data-iconpos="notext"
+          class="ui-btn-right"onclick="refreshHome()" >
+              Home
+          </a>
+          <h5>
+              Settings
+          </h5>
+      </div>
+      <div data-role="content">
+          <div data-role="fieldcontain">
+              <label for="textinput_username">
+                  Current User
+              </label>
+              <input name="inputname" id="username" placeholder="" value="CurrentUser" type="text">
+          </div>
+          <div data-role="fieldcontain">
+              <label for="textinput3">
+                  Accept
+              </label>
+              <input name="accept" id="textinput3" placeholder="" value="Yes" type="text">
+          </div>
+          <div data-role="fieldcontain">
+              <label for="textinput5">
+                  Decline
+              </label>
+              <input name="decline" id="textinput5" placeholder="" value="No" type="text">
+          </div>
+          <div data-role="fieldcontain">
+              <label for="textinput6">
+                  Done
+              </label>
+              <input name="done" id="textinput6" placeholder="" value="Did it already"
+              type="text">
+          </div>
+          <div data-role="fieldcontain">
+              <label for="toggleswitch2">
+                  Push notifications
+              </label>
+              <select name="toggleswitch2" id="toggleswitch2" data-theme="b" data-role="slider">
+                  <option value="off">
+                      Off
+                  </option>
+                  <option value="on">
+                      On
+                  </option>
+              </select>
+          </div>
+          <div data-role="fieldcontain">
+              <label for="toggleswitch1">
+                  Sounds
+              </label>
+              <select name="toggleswitch1" id="toggleswitch1" data-theme="b" data-role="slider">
+                  <option value="off">
+                      Off
+                  </option>
+                  <option value="on">
+                      On
+                  </option>
+              </select>
+          </div>
+          <div data-role="collapsible-set">
+              <div data-role="collapsible">
+                  <h3>
+                      Task Options
+                  </h3>
+              </div>
+          </div>
+      </div>
+      <div data-theme="b" data-role="footer" data-position="fixed">
+          <h3>
+              Honey Do!
+          </h3>
+      </div>
+  </div>
+  
+  
+  <!-- Notifications -->
+  <div data-role="page" id="page_notifications">
+      <div data-theme="b" data-role="header">
+          <h3>
+              Notifications
+          </h3>
+      </div>
+      <div data-role="content">
+          <ul data-role="listview" data-divider-theme="b" data-inset="false">
+              <li data-theme="c">
+                  <a href="#page_notifications" data-transition="slide">
+                      Group: Group1Name, Message: Message1 Text
+                  </a>
+              </li>
+              <li data-theme="c">
+                  <a href="#page_notifications" data-transition="slide">
+                      Group: Group2Name, Message: Message2Text
+                  </a>
+              </li>
+          </ul>
+          <a data-role="button" href="#page_notifications" data-icon="delete" data-iconpos="left">
+              Template for button
+          </a>
+      </div>
+      <div data-theme="b" data-role="footer" data-position="fixed">
+          <h3>
+              Honey Do!
+          </h3>
+      </div>
+  </div>
+  
+  
+  <!-- Add Group -->
+  <div data-role="page" id="page_addgroup">
+      <div data-theme="b" data-role="header" data-position="fixed">
+          <h5>
+              Add Group
+          </h5>
+      </div>
+      <div data-role="content">
+          <div data-role="fieldcontain">
+              <label for="textinput8">
+                  Group Name
+              </label>
+              <input name="" id="groupname-field" placeholder="" value="Group #N" type="text">
+          </div>
+          <div data-role="fieldcontain" class="contactlist">
+              <label for="invite_list">
+                  Invite Member
+              </label>
+              <select id="invite_list" name="inviation">
+                  <option value="option1">
+                      Tori
+                  </option>
+                  <option value="option2">
+                      Steve
+                  </option>
+              </select>
+          </div>
+		  <button id="create-button" data-inline="true" data-theme="b">Create</button>
+      </div>
+      <div data-theme="b" data-role="footer" data-position="fixed">
+          <h3>
+              Honey Do!
+          </h3>
+      </div>
+  </div>
+  <!-- GroupInfo -->
+  <div data-role="page" id="page_groupinfo">
+      <div data-theme="b" data-role="header">
+          <a data-role="button" href="#page_home" data-icon="refresh" data-iconpos="notext"
+          class="ui-btn-right">
+              Home
+          </a>
+          <h5>
+              Group Info
+          </h5>
+      </div>
+      <div data-role="content">
+		  <div>
+		  <a data-role="button" href="#page_home" data-icon="minus" data-iconpos="notext"
+			class="ui-btn-right" id="buttonLeaveGroup">
+             Leave Group
+          </a>
+          <div id="showCalendarView">
+              <a href="#showCalendarView" data-transition="fade" id="showingCalendar">
+                  Calendar View
+              </a>
+          </div>
+          <div id="showListView">
+              <a href="#showCalendarView" data-transition="fade" id="showingList">
+                  List View
+              </a>
+          </div>
+          <div data-role="fieldcontain">
+              <label for="selectmenu3">
+                  Filter by member
+              </label>
+              <select id="groupInfoMemberList" name="MemberSelect" data-theme="c">
+                  <option value="allmemberselect" data-theme="c">
+                      All Members
+                  </option>
+              </select>
+          </div>
+          <div data-role="collapsible-set">
+              <div data-role="collapsible" id="groupInfoAllTasksList">
+                  <h3>
+                      All Tasks Temp
+                  </h3>
+              </div>
+              <div data-role="collapsible" id="groupInfoCompletedTasksList">
+                  <h3>
+                      Completed Tasks
+                  </h3>
+              </div>
+              <div data-role="collapsible" id="groupInfoOpenTasksList">
+                  <h3>
+                      Open Task
+                  </h3>
+              </div>
+              <div data-role="collapsible" id="groupInfoInProgressTasksList">
+                  <h3>
+                      In Progress Tasks
+                  </h3>
+              </div>
+          </div>
+          <a data-role="button" data-theme="c" href="#page_groupinfo">
+              Members
+          </a>
+      </div>
+      <div data-theme="b" data-role="footer" data-position="fixed">
+          <h3>
+              Honey Do!
+          </h3>
+      </div>
+  </div>
+  <!-- GroupMembers -->
+  <div data-role="page" id="page_groupmembers">
+      <div data-theme="b" data-role="header" data-position="fixed">
+          <h5>
+              Members
+          </h5>
+      </div>
+      <div data-role="content">
+          <a data-role="button" data-inline="true" href="#page_groupmembers" data-icon="plus"
+          data-iconpos="left">
+              Add Member
+          </a>
+          <div data-role="fieldcontain">
+              <label for="selectmenu2">
+                  Add Members
+              </label>
+              <select id="selectmenu2" name="">
+                  <option value="option1">
+                      Add1
+                  </option>
+                  <option value="value">
+                      Add2
+                  </option>
+              </select>
+          </div>
+          <ul data-role="listview" data-divider-theme="b" data-inset="true">
+              <li data-role="list-divider" role="heading">
+                  Current Members
+              </li>
+              <li data-theme="c">
+                  <a href="#page_home" data-transition="slide">
+                      Member1removal
+                  </a>
+              </li>
+          </ul>
+          <a data-role="button" href="#page_groupmembers" data-icon="minus" data-iconpos="right">
+              Member1ToRemove
+          </a>
+      </div>
+      <div data-theme="b" data-role="footer" data-position="fixed">
+          <h3>
+              Honey Do!
+          </h3>
+      </div>
+  </div>
+</body>
+</html>
